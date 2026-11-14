@@ -5,6 +5,7 @@
 import { neon } from '@neondatabase/serverless';
 import { readFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
+import { fromParts, toParts } from '../src/core/parts.js';
 
 process.loadEnvFile('.env.local');
 const [email, planFile] = process.argv.slice(2);
@@ -14,10 +15,15 @@ const sql = neon(process.env.DATABASE_URL);
 const uid = p => p + randomBytes(4).toString('hex').slice(0, 6);
 const iso = d => d.toISOString().slice(0, 10);
 
-const [row] =
-  await sql`SELECT w.user_id, w.doc, w.updated_at::text AS updated_at FROM users u JOIN workspaces w ON w.user_id = u.id WHERE lower(u.email) = ${email.toLowerCase()}`;
-if (!row) throw new Error(`no workspace for ${email}`);
-const doc = row.doc;
+const [u] = await sql`SELECT id FROM users WHERE lower(email) = ${email.toLowerCase()}`;
+if (!u) throw new Error(`no account for ${email}`);
+const stamp = async () => (await sql`SELECT COALESCE(max(updated_at)::text, '') AS s, count(*)::int AS n FROM workspace_parts WHERE user_id = ${u.id}`)[0];
+const before = await stamp();
+if (!before.n) throw new Error('workspace is empty or not migrated yet. Open the app once, then retry.');
+const rows = await sql`SELECT part, doc FROM workspace_parts WHERE user_id = ${u.id}`;
+const parts = Object.fromEntries(rows.map(r => [r.part, r.doc]));
+const doc = fromParts(parts);
+
 const d = doc.data;
 const now = Date.now();
 const me = d.me;
@@ -88,8 +94,17 @@ for (const spec of plan.tasks) {
   added++;
 }
 
-// optimistic lock: refuse to overwrite if the browser saved in the meantime
-const res =
-  await sql`UPDATE workspaces SET doc = ${JSON.stringify(doc)}::jsonb, updated_at = now() WHERE user_id = ${row.user_id} AND updated_at::text = ${row.updated_at} RETURNING 1`;
-if (!res.length) throw new Error('workspace changed while editing (app open and saved). Run again.');
-console.log(`${p.key}: ${added} added, ${updated} updated`);
+// refuse to write if the app saved in the meantime (small race window, fine for a helper script)
+const after = await stamp();
+if (after.s !== before.s) throw new Error('workspace changed while editing (app open and saved). Run again.');
+const next = toParts(doc);
+const changed = Object.entries(next).filter(([n, v]) => JSON.stringify(v) !== JSON.stringify(parts[n]));
+await sql.transaction(
+  changed.map(
+    ([n, v]) => sql`INSERT INTO workspace_parts (user_id, part, doc, bytes, updated_at)
+      VALUES (${u.id}, ${n}, ${JSON.stringify(v)}::jsonb, ${JSON.stringify(v).length}, now())
+      ON CONFLICT (user_id, part) DO UPDATE SET doc = EXCLUDED.doc, bytes = EXCLUDED.bytes, updated_at = now()`,
+  ),
+);
+await sql`DELETE FROM workspace_parts WHERE user_id = ${u.id} AND NOT (part = ANY(${Object.keys(next)}))`;
+console.log(`${p.key}: ${added} added, ${updated} updated (${changed.length} parts written)`);

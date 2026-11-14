@@ -35,6 +35,14 @@ export function ensureSchema() {
         doc jsonb NOT NULL,
         updated_at timestamptz NOT NULL DEFAULT now()
       )`;
+      await sql`CREATE TABLE IF NOT EXISTS workspace_parts (
+        user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        part text NOT NULL,
+        doc jsonb NOT NULL,
+        bytes int NOT NULL,
+        updated_at timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, part)
+      )`;
       await sql`CREATE TABLE IF NOT EXISTS login_attempts (
         key text PRIMARY KEY,
         fails int NOT NULL DEFAULT 0,
