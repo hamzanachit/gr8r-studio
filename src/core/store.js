@@ -83,7 +83,9 @@ export const S = {
   },
 };
 export let _saveT;
+export const syncHooks = { push: null }; // set by core/sync.js
 export function save() {
+  syncHooks.push?.();
   clearTimeout(_saveT);
   _saveT = setTimeout(() => {
     try {

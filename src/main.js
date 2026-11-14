@@ -55,10 +55,11 @@ import './actions/teams.js';
 import './actions/subtasks.js';
 import './actions/archive.js';
 import { S, D } from './core/store.js';
+import { bootstrap } from './core/sync.js';
 import { A } from './actions/actions.js';
 import { ROUTE_NAMES, render, go } from './shell/render.js';
 
-(function init() {
+(async function init() {
   document.documentElement.lang = 'en';
   if (!document.getElementById('sr-live')) {
     const l = document.createElement('div');
@@ -72,6 +73,9 @@ import { ROUTE_NAMES, render, go } from './shell/render.js';
   if (authRoutes.includes(h)) S.ui.auth = h;
   else if (h && ROUTE_NAMES[h]) S.ui.route = h;
   else S.ui.route = S.prefs.home || 'home';
+  const state = await bootstrap();
+  if (state === 'login' && !S.ui.auth) S.ui.auth = 'login';
+  else if (state === 'login' && S.ui.auth === 'onboarding') S.ui.auth = 'login';
   render();
 })();
 

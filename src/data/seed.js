@@ -542,3 +542,56 @@ export function seed() {
     },
   };
 }
+
+/** A real account's starting workspace: just the owner, nothing else. */
+export function emptyWorkspace(user) {
+  const first =
+    String(user.name || '')
+      .trim()
+      .split(/\s+/)[0] || 'My';
+  return {
+    ws: { name: `${first}'s workspace`, url: first.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'workspace', c: '#5A67D8' },
+    workspaces: [{ id: 'w1', name: `${first}'s workspace`, c: '#5A67D8', plan: 'Free' }],
+    me: 'm1',
+    members: [
+      {
+        id: 'm1',
+        name: user.name,
+        email: user.email,
+        role: 'Owner',
+        team: '',
+        title: '',
+        c: '#5A67D8',
+        status: 'active',
+        last: 0,
+        tz: '',
+      },
+    ],
+    projects: [],
+    tasks: [],
+    comments: [],
+    activity: [],
+    notifs: [],
+    files: [],
+    events: [],
+    projOrder: [],
+    savedViews: [],
+    recentSearches: [],
+    teams: [],
+    sessions: [],
+    invoices: [],
+    tfa: false,
+    notifPrefs: {
+      email_mention: true,
+      email_assign: true,
+      email_digest: true,
+      email_comment: false,
+      push_mention: true,
+      push_assign: true,
+      push_comment: true,
+      push_due: true,
+      mention_all: true,
+      assign_self: true,
+    },
+  };
+}

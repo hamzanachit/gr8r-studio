@@ -13,6 +13,7 @@ import { viewOf } from '../shell/view-engine.js';
 import { TEMPLATES, closeModal, openModal } from '../overlays/modals.js';
 import { closePop, openPop, tgt } from '../overlays/popovers.js';
 import { strengthMeter } from '../pages/settings.js';
+import { authenticate, mode, signOutServer } from '../core/sync.js';
 
 export const A = {},
   IN = {},
@@ -1753,11 +1754,12 @@ A.newWorkspace = () => {
   S.ui.onbData.url = '';
   render();
 };
-A.signOut = () => {
+A.signOut = async () => {
   S.ui.pop = null;
   S.ui.palette = null;
   S.ui.drawer = null;
   S.ui.modals = [];
+  if (!mode.local) await signOutServer();
   S.ui.auth = 'login';
   S.ui.errors = {};
   render();
@@ -2095,11 +2097,24 @@ A.doLogin = () => {
     if (!e.email) $('#l-pw').value = pw;
     return;
   }
-  loadingBtn('login-btn', 750, () => enterApp(`Signed in as ${em}`));
+  const btn = document.getElementById('login-btn');
+  btn?.classList.add('is-loading');
+  btn?.setAttribute('aria-busy', 'true');
+  authenticate('login', { email: em, password: pw }).then(r => {
+    if (!r.ok) {
+      S.ui.errors = { [r.field === 'email' ? 'email' : 'pw']: r.error };
+      render();
+      return;
+    }
+    S.ui.route = S.prefs.home || 'home';
+    enterApp(`Signed in as ${r.user.email}`);
+  });
 };
 A.socialAuth = el => {
-  el.classList.add('is-loading');
-  setTimeout(() => enterApp(`Signed in with ${el.dataset.v}`), 800);
+  if (mode.local) {
+    el.classList.add('is-loading');
+    setTimeout(() => enterApp(`Signed in with ${el.dataset.v}`), 800);
+  } else toast(`${el.dataset.v} sign-in isn't available yet. Use email and password.`, { kind: 'info' });
 };
 A.doSignup = () => {
   const e = (S.ui.errors = {});
@@ -2116,9 +2131,19 @@ A.doSignup = () => {
     $('#s-email').value = em;
     return;
   }
-  loadingBtn('signup-btn', 800, () => {
-    S.ui.auth = 'verify';
-    startResend();
+  const btn = document.getElementById('signup-btn');
+  btn?.classList.add('is-loading');
+  btn?.setAttribute('aria-busy', 'true');
+  authenticate('signup', { name: nm, email: em, password: pw }).then(r => {
+    if (!r.ok) {
+      S.ui.errors = { [r.field || 'email']: r.error };
+      render();
+      return;
+    }
+    S.ui.auth = 'onboarding';
+    S.ui.onb = 0;
+    S.ui.onbData.ws = '';
+    S.ui.onbData.url = '';
     render();
   });
 };
@@ -2155,6 +2180,11 @@ A.doForgot = () => {
   S.ui.errors = {};
   if (!EMAIL_RE.test(em)) {
     S.ui.errors.email = 'Enter the email you use to sign in';
+    render();
+    return;
+  }
+  if (!mode.local) {
+    S.ui.errors.email = 'Password reset by email is not set up yet. Contact the workspace owner.';
     render();
     return;
   }
